@@ -1,0 +1,2116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DataVault V2</title>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/recharts@2.8.0/umd/Recharts.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{--navy:#1B2A47;--orange:#E05C20;--green:#2B7A4B;}
+  body{background:#0f1623;color:#e2e8f0;font-family:'Segoe UI',sans-serif;margin:0;}
+  .sidebar{background:#111827;border-right:1px solid #1f2937;}
+  .card{background:#1a2332;border:1px solid #1f2937;border-radius:12px;}
+  .btn-primary{background:#E05C20;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;transition:all 0.2s;}
+  .btn-primary:hover{background:#c44d18;transform:translateY(-1px);}
+  .btn-secondary{background:#1f2937;color:#e2e8f0;border:1px solid #374151;padding:8px 16px;border-radius:8px;cursor:pointer;}
+  .btn-secondary:hover{background:#2d3748;}
+  .btn-danger{background:#dc2626;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;}
+  .input{background:#0f1623;border:1px solid #374151;color:#e2e8f0;padding:8px 12px;border-radius:8px;width:100%;box-sizing:border-box;outline:none;}
+  .input:focus{border-color:#E05C20;}
+  .tab-btn{padding:8px 16px;border:none;background:transparent;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;font-weight:500;}
+  .tab-btn.active{color:#E05C20;border-bottom-color:#E05C20;}
+  .grade-A{background:#166534;color:#86efac;}
+  .grade-B{background:#1e3a5f;color:#93c5fd;}
+  .grade-C{background:#713f12;color:#fde68a;}
+  .grade-D{background:#7c2d12;color:#fca5a5;}
+  .grade-F{background:#450a0a;color:#fca5a5;}
+  .severity-NONE{color:#6b7280;}
+  .severity-LOW{color:#fbbf24;}
+  .severity-MEDIUM{color:#f97316;}
+  .severity-HIGH{color:#ef4444;}
+  .severity-CRITICAL{color:#dc2626;font-weight:700;}
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:#0f1623;}
+  ::-webkit-scrollbar-thumb{background:#374151;border-radius:3px;}
+  .spinner{width:20px;height:20px;border:2px solid #374151;border-top:2px solid #E05C20;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .fade-in{animation:fadeIn 0.3s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  .version-card{transition:border-color 0.2s;}
+  .version-card:hover{border-color:#E05C20;}
+  .model-bar{transition:width 0.6s ease;}
+  table{width:100%;border-collapse:collapse;}
+  th{background:#111827;padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #1f2937;}
+  td{padding:10px 12px;border-bottom:1px solid #1f2937;font-size:14px;}
+  tr:hover td{background:#111827;}
+  .champion-card{background:linear-gradient(135deg,#1B2A47,#2d1b0e);border:2px solid #E05C20;}
+  .heatmap-cell{border-radius:4px;padding:4px 8px;font-size:12px;text-align:center;font-weight:600;}
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="init-loader" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1623;flex-direction:column;gap:16px;">
+    <div style="width:48px;height:48px;border:3px solid #374151;border-top:3px solid #E05C20;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+    <div style="color:#9ca3af;font-family:sans-serif;font-size:16px;">Loading DataVault V2...</div>
+    <div id="init-error" style="display:none;color:#ef4444;font-family:sans-serif;font-size:14px;max-width:500px;text-align:center;padding:16px;background:#1a0a0a;border-radius:8px;border:1px solid #ef4444;"></div>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  var el = document.getElementById('init-error');
+  if(el){ el.style.display='block'; el.textContent = '❌ Error: ' + msg + (src?' ('+src.split('/').pop()+':'+line+')':''); }
+};
+</script>
+<script type="text/babel">
+const API = "http://localhost:8000/api";
+const { useState, useEffect, useRef, useCallback } = React;
+const { LineChart, Line, BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis,
+        PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+        Cell } = Recharts;
+
+// ─── API Helper ─────────────────────────────────────────────────────────────
+function getSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem("dv_session")||"null");
+    if(!s||!s.token||!s.username) return null;
+    return s;
+  }catch{return null;}
+}
+function setSession(s){localStorage.setItem("dv_session",JSON.stringify(s));}
+function clearSession(){localStorage.removeItem("dv_session");}
+
+async function api(method,path,body=null,isForm=false){
+  const s = getSession();
+  const headers = {};
+  if(s&&s.token) headers["Authorization"]=`Bearer ${s.token}`;
+  if(!isForm&&body) headers["Content-Type"]="application/json";
+  const opts = {method, headers};
+  if(body) opts.body = isForm ? body : JSON.stringify(body);
+  const r = await fetch(`${API}${path}`,opts);
+  if(r.status===401){clearSession();window.location.reload();return null;}
+  if(!r.ok){
+    let msg="Request failed";
+    try{const e=await r.json();msg=e.detail||JSON.stringify(e);}catch{}
+    throw new Error(msg);
+  }
+  if((r.headers.get("content-type")||"").includes("text/csv")||
+     (r.headers.get("content-disposition")||"").includes("attachment")){
+    return await r.blob();
+  }
+  return await r.json();
+}
+
+// ─── Notification ────────────────────────────────────────────────────────────
+function useNotify(){
+  const [notes,setNotes]=useState([]);
+  const notify=(msg,type="success")=>{
+    const id=Date.now();
+    setNotes(n=>[...n,{id,msg,type}]);
+    setTimeout(()=>setNotes(n=>n.filter(x=>x.id!==id)),3500);
+  };
+  const Notifs=()=>(
+    <div style={{position:"fixed",top:20,right:20,zIndex:9999,display:"flex",flexDirection:"column",gap:8}}>
+      {notes.map(n=>(
+        <div key={n.id} className="fade-in" style={{
+          background: n.type==="error"?"#450a0a":n.type==="warning"?"#451a03":"#052e16",
+          border:`1px solid ${n.type==="error"?"#dc2626":n.type==="warning"?"#d97706":"#16a34a"}`,
+          color:"#e2e8f0",padding:"12px 16px",borderRadius:8,maxWidth:320,fontSize:14
+        }}>{n.type==="error"?"❌":n.type==="warning"?"⚠️":"✅"} {n.msg}</div>
+      ))}
+    </div>
+  );
+  return {notify, Notifs};
+}
+
+// ─── Grade Badge ─────────────────────────────────────────────────────────────
+function GradeBadge({grade,score}){
+  if(!grade) return null;
+  return (
+    <span className={`grade-${grade}`} style={{padding:"2px 8px",borderRadius:4,fontSize:12,fontWeight:700}}>
+      {grade}{score!=null?` ${Math.round(score)}%`:""}
+    </span>
+  );
+}
+
+// ─── Login/Register Page ──────────────────────────────────────────────────────
+function AuthPage({onLogin}){
+  const [mode,setMode]=useState("login");
+  const [form,setForm]=useState({username:"",password:"",email:"",full_name:""});
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  async function submit(){
+    setError(""); setLoading(true);
+    try{
+      let data;
+      if(mode==="login"){
+        data=await api("POST","/auth/login",{username:form.username,password:form.password});
+      } else {
+        data=await api("POST","/auth/register",{
+          username:form.username,email:form.email,
+          password:form.password,full_name:form.full_name
+        });
+      }
+      setSession(data);
+      onLogin(data);
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  }
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",
+                 background:"linear-gradient(135deg,#0f1623,#1B2A47)"}}>
+      <div className="card fade-in" style={{width:400,padding:32}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:36,marginBottom:8}}>🗄️</div>
+          <h1 style={{margin:0,color:"#E05C20",fontSize:24,fontWeight:800}}>DataVault V2</h1>
+          <p style={{margin:"4px 0 0",color:"#6b7280",fontSize:14}}>Dataset Versioning & ML Platform</p>
+        </div>
+
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          {["login","register"].map(m=>(
+            <button key={m} onClick={()=>setMode(m)}
+              style={{flex:1,padding:"8px",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,
+                      background:mode===m?"#E05C20":"#1f2937",color:mode===m?"#fff":"#9ca3af"}}>
+              {m==="login"?"Sign In":"Register"}
+            </button>
+          ))}
+        </div>
+
+        {error && <div style={{background:"#450a0a",color:"#fca5a5",padding:"10px",borderRadius:8,marginBottom:16,fontSize:14}}>
+          ❌ {error}
+        </div>}
+
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input className="input" placeholder="Username" value={form.username}
+            onChange={e=>setForm({...form,username:e.target.value})}
+            onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          {mode==="register"&&(
+            <>
+              <input className="input" placeholder="Email" type="email" value={form.email}
+                onChange={e=>setForm({...form,email:e.target.value})}/>
+              <input className="input" placeholder="Full Name" value={form.full_name}
+                onChange={e=>setForm({...form,full_name:e.target.value})}/>
+            </>
+          )}
+          <input className="input" placeholder="Password" type="password" value={form.password}
+            onChange={e=>setForm({...form,password:e.target.value})}
+            onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          <button className="btn-primary" onClick={submit} disabled={loading} style={{marginTop:4}}>
+            {loading?<span className="spinner"/>:mode==="login"?"Sign In":"Create Account"}
+          </button>
+        </div>
+
+        <div style={{marginTop:16,textAlign:"center"}}>
+          <button onClick={()=>{clearSession();}} style={{background:"none",border:"none",color:"#6b7280",
+            fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+            Clear saved session
+          </button>
+        </div>
+
+        <div style={{marginTop:16,background:"#111827",borderRadius:8,padding:12,fontSize:12,color:"#6b7280"}}>
+          🔑 Demo: <strong style={{color:"#e2e8f0"}}>admin</strong> / <strong style={{color:"#e2e8f0"}}>Admin@123</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+function Dashboard({user,onSelectProject,onLogout}){
+  const [projects,setProjects]=useState([]);
+  const [showCreate,setShowCreate]=useState(false);
+  const [form,setForm]=useState({name:"",description:"",default_target_column:""});
+  const [loading,setLoading]=useState(true);
+  const {notify,Notifs}=useNotify();
+
+  useEffect(()=>{ loadProjects(); },[]);
+
+  async function loadProjects(){
+    try{const d=await api("GET","/projects");setProjects(d||[]);}
+    catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  async function createProject(){
+    try{
+      await api("POST","/projects",form);
+      setShowCreate(false);setForm({name:"",description:"",default_target_column:""});
+      notify("Project created!");loadProjects();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0f1623"}}>
+      <Notifs/>
+      {/* Header */}
+      <div style={{background:"#111827",borderBottom:"1px solid #1f2937",padding:"12px 24px",
+                   display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:24}}>🗄️</span>
+          <span style={{fontWeight:800,fontSize:18,color:"#E05C20"}}>DataVault V2</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{color:"#9ca3af",fontSize:14}}>👤 {user.username}</span>
+          {user.role==="admin"&&<span style={{background:"#7c3aed",color:"#fff",padding:"2px 8px",borderRadius:4,fontSize:12}}>ADMIN</span>}
+          <button className="btn-secondary" onClick={onLogout}>Sign Out</button>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1200,margin:"0 auto",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+          <div>
+            <h2 style={{margin:0,fontSize:22,fontWeight:700}}>My Projects</h2>
+            <p style={{margin:"4px 0 0",color:"#6b7280",fontSize:14}}>{projects.length} project{projects.length!==1?"s":""}</p>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {user.role==="admin"&&(
+              <button className="btn-secondary" onClick={()=>onSelectProject({id:"admin",name:"Admin Panel"})}>
+                🛡️ Admin Panel
+              </button>
+            )}
+            <button className="btn-primary" onClick={()=>setShowCreate(true)}>+ New Project</button>
+          </div>
+        </div>
+
+        {showCreate&&(
+          <div className="card fade-in" style={{padding:20,marginBottom:20}}>
+            <h3 style={{margin:"0 0 16px",fontSize:16}}>Create New Project</h3>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <input className="input" placeholder="Project Name *" value={form.name}
+                onChange={e=>setForm({...form,name:e.target.value})}/>
+              <input className="input" placeholder="Description" value={form.description}
+                onChange={e=>setForm({...form,description:e.target.value})}/>
+              <input className="input" placeholder="Default Target Column (for auto-eval)" value={form.default_target_column}
+                onChange={e=>setForm({...form,default_target_column:e.target.value})}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn-primary" onClick={createProject} disabled={!form.name}>Create</button>
+              <button className="btn-secondary" onClick={()=>setShowCreate(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{textAlign:"center",padding:60}}><span className="spinner" style={{width:40,height:40}}/></div>
+        ) : projects.length===0 ? (
+          <div style={{textAlign:"center",padding:80,color:"#6b7280"}}>
+            <div style={{fontSize:60,marginBottom:16}}>📂</div>
+            <h3 style={{margin:"0 0 8px"}}>No projects yet</h3>
+            <p style={{margin:0}}>Create your first project to get started</p>
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+            {projects.map(p=>(
+              <div key={p.id} className="card" style={{padding:20,cursor:"pointer",transition:"border-color 0.2s"}}
+                   onClick={()=>onSelectProject(p)}
+                   onMouseEnter={e=>e.currentTarget.style.borderColor="#E05C20"}
+                   onMouseLeave={e=>e.currentTarget.style.borderColor="#1f2937"}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                  <div>
+                    <h3 style={{margin:"0 0 4px",fontSize:16,fontWeight:700}}>{p.name}</h3>
+                    <p style={{margin:0,color:"#6b7280",fontSize:13}}>{p.description||"No description"}</p>
+                  </div>
+                  <span style={{fontSize:24}}>📊</span>
+                </div>
+                <div style={{display:"flex",gap:16,fontSize:13,color:"#9ca3af"}}>
+                  <span>📁 {p.version_count||0} versions</span>
+                  <span>👥 {p.collaborator_count||0} members</span>
+                </div>
+                <div style={{marginTop:8,fontSize:12,color:"#6b7280"}}>
+                  Owner: {p.owner_name} · Updated {new Date(p.updated_at).toLocaleDateString()}
+                </div>
+                {p.default_target_column&&(
+                  <div style={{marginTop:8,background:"#0f1623",borderRadius:6,padding:"4px 8px",fontSize:12}}>
+                    🎯 Target: <strong style={{color:"#E05C20"}}>{p.default_target_column}</strong>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Project View ─────────────────────────────────────────────────────────────
+function ProjectView({project,user,onBack}){
+  const [tab,setTab]=useState("overview");
+  const {notify,Notifs}=useNotify();
+  const tabs=[
+    {id:"overview",icon:"📊",label:"Overview"},
+    {id:"versions",icon:"📁",label:"Versions"},
+    {id:"compare",icon:"🔍",label:"Compare"},
+    {id:"evaluate",icon:"🤖",label:"Evaluate"},
+    {id:"radar",icon:"🎯",label:"Best Radar"},
+    {id:"predict",icon:"⚡",label:"Predict"},
+    {id:"copilot",icon:"💬",label:"Copilot"},
+    {id:"team",icon:"👥",label:"Team"},
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:"#0f1623"}}>
+      <Notifs/>
+      {/* Top bar */}
+      <div style={{background:"#111827",borderBottom:"1px solid #1f2937",padding:"10px 20px",
+                   display:"flex",alignItems:"center",gap:16}}>
+        <button className="btn-secondary" onClick={onBack} style={{padding:"6px 12px"}}>← Back</button>
+        <span style={{fontSize:16}}>📊</span>
+        <span style={{fontWeight:700,fontSize:16}}>{project.name}</span>
+        <span style={{color:"#6b7280",fontSize:13}}>{project.description}</span>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{background:"#111827",borderBottom:"1px solid #1f2937",padding:"0 20px",
+                   display:"flex",overflowX:"auto"}}>
+        {tabs.map(t=>(
+          <button key={t.id} className={`tab-btn ${tab===t.id?"active":""}`}
+            onClick={()=>setTab(t.id)}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{flex:1,overflow:"auto",padding:20}} className="fade-in">
+        {tab==="overview" && <OverviewTab project={project} user={user} notify={notify}/>}
+        {tab==="versions" && <VersionsTab project={project} user={user} notify={notify} onEval={()=>setTab("evaluate")}/>}
+        {tab==="compare" && <CompareTab project={project} user={user} notify={notify}/>}
+        {tab==="evaluate" && <EvaluateTab project={project} user={user} notify={notify}/>}
+        {tab==="radar" && <RadarTab project={project} user={user} notify={notify}/>}
+        {tab==="predict" && <PredictTab project={project} user={user} notify={notify}/>}
+        {tab==="copilot" && <CopilotTab project={project} user={user} notify={notify}/>}
+        {tab==="team" && <TeamTab project={project} user={user} notify={notify}/>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+function OverviewTab({project,user,notify}){
+  const [stats,setStats]=useState(null);
+  const [activity,setActivity]=useState([]);
+  const [editMode,setEditMode]=useState(false);
+  const [form,setForm]=useState({name:project.name,description:project.description||"",
+    default_target_column:project.default_target_column||""});
+
+  useEffect(()=>{ loadData(); },[]);
+
+  async function loadData(){
+    try{
+      const [s,a]=await Promise.all([
+        api("GET",`/projects/${project.id}/stats`),
+        api("GET",`/projects/${project.id}/activity`)
+      ]);
+      setStats(s); setActivity(a||[]);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function saveProject(){
+    try{
+      await api("PATCH",`/projects/${project.id}`,form);
+      notify("Project updated!");setEditMode(false);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  return (
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0}}>{project.name}</h2>
+        <button className="btn-secondary" onClick={()=>setEditMode(!editMode)}>
+          {editMode?"Cancel":"✏️ Edit"}
+        </button>
+      </div>
+
+      {editMode&&(
+        <div className="card fade-in" style={{padding:16,marginBottom:20}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <input className="input" placeholder="Project Name" value={form.name}
+              onChange={e=>setForm({...form,name:e.target.value})}/>
+            <input className="input" placeholder="Description" value={form.description}
+              onChange={e=>setForm({...form,description:e.target.value})}/>
+            <input className="input" placeholder="Default Target Column" value={form.default_target_column}
+              onChange={e=>setForm({...form,default_target_column:e.target.value})}/>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn-primary" onClick={saveProject}>Save</button>
+              <button className="btn-secondary" onClick={()=>setEditMode(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stats&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:20}}>
+          {[
+            {icon:"📁",label:"Versions",value:stats.version_count},
+            {icon:"🤖",label:"Evaluations",value:stats.evaluation_count},
+            {icon:"💾",label:"Storage",value:`${(stats.storage_bytes/1024/1024).toFixed(1)} MB`},
+            {icon:"👥",label:"Members",value:stats.collaborator_count+1}
+          ].map(s=>(
+            <div key={s.label} className="card" style={{padding:16,textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:4}}>{s.icon}</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#E05C20"}}>{s.value}</div>
+              <div style={{fontSize:13,color:"#6b7280"}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="card" style={{padding:20}}>
+        <h3 style={{margin:"0 0 16px",fontSize:16}}>📋 Recent Activity</h3>
+        {activity.length===0?(
+          <p style={{color:"#6b7280",textAlign:"center",padding:20}}>No activity yet</p>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {activity.slice(0,15).map((a,i)=>(
+              <div key={i} style={{display:"flex",gap:12,alignItems:"center",
+                                   padding:"8px",background:"#111827",borderRadius:6}}>
+                <span style={{fontSize:18}}>
+                  {a.action.includes("commit")?"📁":a.action.includes("eval")?"🤖":
+                   a.action.includes("merge")?"🔀":a.action.includes("branch")?"🌿":"⚡"}
+                </span>
+                <div style={{flex:1}}>
+                  <span style={{fontWeight:600}}>{a.username||"System"}</span>
+                  <span style={{color:"#6b7280"}}> · {a.action}</span>
+                  {a.details&&<span style={{color:"#9ca3af"}}> · {a.details}</span>}
+                </div>
+                <span style={{fontSize:12,color:"#6b7280"}}>{new Date(a.created_at).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Versions Tab ─────────────────────────────────────────────────────────────
+function VersionsTab({project,user,notify,onEval}){
+  const [versions,setVersions]=useState([]);
+  const [branches,setBranches]=useState([]);
+  const [uploading,setUploading]=useState(false);
+  const [showUpload,setShowUpload]=useState(false);
+  const [showBranch,setShowBranch]=useState(false);
+  const [showMerge,setShowMerge]=useState(false);
+  const [preview,setPreview]=useState(null);
+  const [lineage,setLineage]=useState([]);
+  const [uploadForm,setUploadForm]=useState({message:"",branch:"main",file:null});
+  const [branchForm,setBranchForm]=useState({name:"",base_version_id:""});
+  const [mergeForm,setMergeForm]=useState({source:"",target:"main",strategy:"latest"});
+  const fileRef=useRef();
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{ loadAll(); },[]);
+
+  async function loadAll(){
+    setLoading(true);
+    try{
+      const [v,b,l]=await Promise.all([
+        api("GET",`/projects/${project.id}/versions`),
+        api("GET",`/projects/${project.id}/branches`),
+        api("GET",`/projects/${project.id}/lineage`)
+      ]);
+      setVersions(v||[]); setBranches(b||[]); setLineage(l||[]);
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  async function uploadVersion(){
+    if(!uploadForm.file){notify("Select a file","warning");return;}
+    setUploading(true);
+    try{
+      const fd=new FormData();
+      fd.append("project_id",project.id);
+      fd.append("commit_message",uploadForm.message||"New version");
+      fd.append("branch_name",uploadForm.branch||"main");
+      fd.append("file",uploadForm.file);
+      const r=await api("POST","/versions/commit",fd,true);
+      notify(`✅ V${r.version_number} committed! Quality: ${r.quality?.grade||"N/A"}`);
+      setShowUpload(false); setUploadForm({message:"",branch:"main",file:null});
+      if(fileRef.current) fileRef.current.value="";
+      loadAll();
+      if(r.auto_eval_id) notify(`🤖 Auto-evaluation started (ID: ${r.auto_eval_id})!`);
+    }catch(e){notify(e.message,"error");}
+    finally{setUploading(false);}
+  }
+
+  async function createBranch(){
+    try{
+      await api("POST","/branches/create",{
+        project_id:project.id,branch_name:branchForm.name,
+        base_version_id:branchForm.base_version_id||null
+      });
+      notify("Branch created!"); setShowBranch(false); loadAll();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function mergeBranches(){
+    try{
+      const r=await api("POST","/branches/merge",{
+        project_id:project.id,...mergeForm
+      });
+      notify(`Merged! New V${r.version_number}`); setShowMerge(false); loadAll();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function loadPreview(vid){
+    try{
+      const d=await api("GET",`/versions/${vid}/preview?rows=50`);
+      setPreview({...d,version_id:vid});
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function deleteVersion(vid){
+    if(!confirm("Delete this version?")) return;
+    try{
+      await api("DELETE",`/versions/${vid}`);
+      notify("Version deleted"); loadAll();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  if(loading) return <div style={{textAlign:"center",padding:60}}><span className="spinner" style={{width:40,height:40}}/></div>;
+
+  return (
+    <div style={{maxWidth:1000}}>
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        <button className="btn-primary" onClick={()=>setShowUpload(!showUpload)}>📤 Upload Version</button>
+        <button className="btn-secondary" onClick={()=>setShowBranch(!showBranch)}>🌿 New Branch</button>
+        <button className="btn-secondary" onClick={()=>setShowMerge(!showMerge)}>🔀 Merge Branch</button>
+      </div>
+
+      {showUpload&&(
+        <div className="card fade-in" style={{padding:16,marginBottom:16}}>
+          <h4 style={{margin:"0 0 12px"}}>📤 Upload New Version</h4>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <input className="input" placeholder="Commit message" value={uploadForm.message}
+              onChange={e=>setUploadForm({...uploadForm,message:e.target.value})}/>
+            <select className="input" value={uploadForm.branch}
+              onChange={e=>setUploadForm({...uploadForm,branch:e.target.value})}>
+              {branches.length>0 ? branches.map(b=><option key={b.id} value={b.name}>{b.name}</option>)
+                : <option value="main">main</option>}
+            </select>
+          </div>
+          <input ref={fileRef} type="file" accept=".csv" className="input" style={{marginBottom:12}}
+            onChange={e=>setUploadForm({...uploadForm,file:e.target.files[0]})}/>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn-primary" onClick={uploadVersion} disabled={uploading}>
+              {uploading?<span className="spinner"/>:"Commit Version"}
+            </button>
+            <button className="btn-secondary" onClick={()=>setShowUpload(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showBranch&&(
+        <div className="card fade-in" style={{padding:16,marginBottom:16}}>
+          <h4 style={{margin:"0 0 12px"}}>🌿 Create Branch</h4>
+          <div style={{display:"flex",gap:12,marginBottom:12}}>
+            <input className="input" placeholder="Branch name" value={branchForm.name}
+              onChange={e=>setBranchForm({...branchForm,name:e.target.value})}/>
+            <select className="input" value={branchForm.base_version_id}
+              onChange={e=>setBranchForm({...branchForm,base_version_id:e.target.value})}>
+              <option value="">Base from latest</option>
+              {versions.map(v=><option key={v.id} value={v.id}>V{v.version_number} - {v.commit_message}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn-primary" onClick={createBranch}>Create</button>
+            <button className="btn-secondary" onClick={()=>setShowBranch(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showMerge&&(
+        <div className="card fade-in" style={{padding:16,marginBottom:16}}>
+          <h4 style={{margin:"0 0 12px"}}>🔀 Merge Branch</h4>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            <select className="input" value={mergeForm.source}
+              onChange={e=>setMergeForm({...mergeForm,source:e.target.value})}>
+              <option value="">Source branch</option>
+              {branches.map(b=><option key={b.id} value={b.name}>{b.name}</option>)}
+            </select>
+            <select className="input" value={mergeForm.target}
+              onChange={e=>setMergeForm({...mergeForm,target:e.target.value})}>
+              {branches.map(b=><option key={b.id} value={b.name}>{b.name}</option>)}
+            </select>
+            <select className="input" value={mergeForm.strategy}
+              onChange={e=>setMergeForm({...mergeForm,strategy:e.target.value})}>
+              <option value="latest">Latest version</option>
+              <option value="best_quality">Best quality</option>
+              <option value="largest">Largest dataset</option>
+            </select>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn-primary" onClick={mergeBranches}>Merge</button>
+            <button className="btn-secondary" onClick={()=>setShowMerge(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {versions.length===0?(
+        <div style={{textAlign:"center",padding:60,color:"#6b7280"}}>
+          <div style={{fontSize:48}}>📁</div>
+          <p>No versions yet. Upload your first CSV!</p>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {versions.map(v=>(
+            <div key={v.id} className="card version-card" style={{padding:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <span style={{background:"#E05C20",color:"#fff",padding:"4px 10px",
+                                borderRadius:6,fontWeight:700,fontSize:14}}>V{v.version_number}</span>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:15}}>{v.commit_message||"No message"}</div>
+                    <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>
+                      By {v.author_name} · {new Date(v.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <span style={{background:"#1f2937",color:"#9ca3af",padding:"2px 8px",
+                                borderRadius:4,fontSize:12}}>🌿 {v.branch_name||"main"}</span>
+                  {v.quality_grade&&<GradeBadge grade={v.quality_grade} score={v.quality_overall}/>}
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:12,color:"#6b7280"}}>
+                    {v.row_count?.toLocaleString()} rows · {v.col_count} cols · {(v.file_size/1024).toFixed(0)}KB
+                  </span>
+                  <button className="btn-secondary" style={{padding:"4px 10px",fontSize:12}}
+                    onClick={()=>setPreview(preview?.version_id===v.id?null:null)||loadPreview(v.id)}>
+                    👁️ Preview
+                  </button>
+                  <button className="btn-danger" style={{padding:"4px 8px",fontSize:12}}
+                    onClick={()=>deleteVersion(v.id)}>🗑️</button>
+                </div>
+              </div>
+
+              {preview&&preview.version_id===v.id&&(
+                <div className="fade-in" style={{marginTop:12,overflow:"auto",maxHeight:300}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                    <span style={{fontSize:13,color:"#9ca3af"}}>
+                      Showing {preview.rows.length} of {preview.total_rows} rows · {preview.total_cols} columns
+                    </span>
+                    <button style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer"}}
+                      onClick={()=>setPreview(null)}>✕</button>
+                  </div>
+                  <table>
+                    <thead><tr>{preview.columns.map(c=><th key={c}>{c}</th>)}</tr></thead>
+                    <tbody>
+                      {preview.rows.map((row,i)=>(
+                        <tr key={i}>{row.map((cell,j)=>(
+                          <td key={j}>{String(cell)}</td>
+                        ))}</tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {lineage.length>1&&(
+        <div className="card" style={{padding:16,marginTop:20}}>
+          <h3 style={{margin:"0 0 12px",fontSize:15}}>🌳 Version Lineage</h3>
+          <div style={{overflowX:"auto",paddingBottom:8}}>
+            <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+              {lineage.map((v,i)=>(
+                <React.Fragment key={v.id}>
+                  <div style={{background:"#111827",border:`1px solid ${v.branch_name==="main"?"#E05C20":"#374151"}`,
+                               borderRadius:8,padding:"6px 12px",fontSize:12,textAlign:"center",minWidth:80}}>
+                    <div style={{fontWeight:700,color:"#E05C20"}}>V{v.version_number}</div>
+                    <div style={{color:"#6b7280"}}>{v.branch_name}</div>
+                    {v.quality_grade&&<div style={{marginTop:2}}><GradeBadge grade={v.quality_grade}/></div>}
+                  </div>
+                  {i<lineage.length-1&&<span style={{color:"#374151",fontSize:18}}>→</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Compare Tab ─────────────────────────────────────────────────────────────
+function CompareTab({project,user,notify}){
+  const [versions,setVersions]=useState([]);
+  const [selA,setSelA]=useState("");
+  const [selB,setSelB]=useState("");
+  const [result,setResult]=useState(null);
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{ api("GET",`/projects/${project.id}/versions`).then(v=>setVersions(v||[])); },[]);
+
+  async function runDiff(){
+    if(!selA||!selB){notify("Select two versions","warning");return;}
+    setLoading(true);
+    try{
+      const d=await api("POST","/diff",{project_id:project.id,version_a_id:parseInt(selA),version_b_id:parseInt(selB)});
+      setResult(d);
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  function severityColor(s){
+    return {NONE:"#6b7280",LOW:"#fbbf24",MEDIUM:"#f97316",HIGH:"#ef4444",CRITICAL:"#dc2626"}[s]||"#6b7280";
+  }
+
+  return (
+    <div style={{maxWidth:900}}>
+      <div className="card" style={{padding:16,marginBottom:16}}>
+        <h3 style={{margin:"0 0 12px",fontSize:16}}>🔍 Compare Two Versions</h3>
+        <div style={{display:"flex",gap:12,alignItems:"flex-end"}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:13,color:"#9ca3af"}}>Version A (baseline)</label>
+            <select className="input" value={selA} onChange={e=>setSelA(e.target.value)}>
+              <option value="">Select version A</option>
+              {versions.map(v=><option key={v.id} value={v.id}>V{v.version_number} - {v.commit_message}</option>)}
+            </select>
+          </div>
+          <div style={{flex:1}}>
+            <label style={{fontSize:13,color:"#9ca3af"}}>Version B (compare)</label>
+            <select className="input" value={selB} onChange={e=>setSelB(e.target.value)}>
+              <option value="">Select version B</option>
+              {versions.map(v=><option key={v.id} value={v.id}>V{v.version_number} - {v.commit_message}</option>)}
+            </select>
+          </div>
+          <button className="btn-primary" onClick={runDiff} disabled={loading} style={{whiteSpace:"nowrap"}}>
+            {loading?<span className="spinner"/>:"Run Diff"}
+          </button>
+        </div>
+      </div>
+
+      {result&&(
+        <div className="fade-in">
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <h3 style={{margin:0}}>Results</h3>
+            <span style={{fontWeight:700,fontSize:16,color:severityColor(result.severity)}}>
+              ● {result.severity} SEVERITY
+            </span>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            {/* Schema diff */}
+            <div className="card" style={{padding:16}}>
+              <h4 style={{margin:"0 0 12px",fontSize:14}}>🏗️ Schema Changes</h4>
+              {result.result?.schema_diff?.added_columns?.length>0&&(
+                <div style={{marginBottom:8}}>
+                  <div style={{color:"#22c55e",fontSize:13,fontWeight:600}}>Added columns:</div>
+                  {result.result.schema_diff.added_columns.map(c=>(
+                    <div key={c} style={{color:"#22c55e",fontSize:13}}>+ {c}</div>
+                  ))}
+                </div>
+              )}
+              {result.result?.schema_diff?.removed_columns?.length>0&&(
+                <div style={{marginBottom:8}}>
+                  <div style={{color:"#ef4444",fontSize:13,fontWeight:600}}>Removed columns:</div>
+                  {result.result.schema_diff.removed_columns.map(c=>(
+                    <div key={c} style={{color:"#ef4444",fontSize:13}}>- {c}</div>
+                  ))}
+                </div>
+              )}
+              {Object.keys(result.result?.schema_diff?.type_changed||{}).length>0&&(
+                <div>
+                  <div style={{color:"#fbbf24",fontSize:13,fontWeight:600}}>Type changes:</div>
+                  {Object.entries(result.result.schema_diff.type_changed).map(([k,v])=>(
+                    <div key={k} style={{color:"#fbbf24",fontSize:13}}>
+                      {k}: {v.from} → {v.to}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!result.result?.schema_diff?.added_columns?.length &&
+               !result.result?.schema_diff?.removed_columns?.length &&
+               !Object.keys(result.result?.schema_diff?.type_changed||{}).length&&(
+                <div style={{color:"#22c55e",fontSize:13}}>✅ No schema changes</div>
+              )}
+            </div>
+
+            {/* Row diff */}
+            <div className="card" style={{padding:16}}>
+              <h4 style={{margin:"0 0 12px",fontSize:14}}>📊 Row Statistics</h4>
+              {result.result?.row_diff&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[
+                    ["Rows A",result.result.row_diff.rows_a?.toLocaleString()],
+                    ["Rows B",result.result.row_diff.rows_b?.toLocaleString()],
+                    ["Row Diff",`${result.result.row_diff.row_diff>0?"+":""}${result.result.row_diff.row_diff} (${result.result.row_diff.row_diff_pct}%)`],
+                    ["Duplicates A",result.result.row_diff.duplicates_a],
+                    ["Duplicates B",result.result.row_diff.duplicates_b]
+                  ].map(([k,v])=>(
+                    <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                      <span style={{color:"#9ca3af"}}>{k}</span>
+                      <span style={{fontWeight:600}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Drift */}
+          {result.result?.drift&&Object.keys(result.result.drift).length>0&&(
+            <div className="card" style={{padding:16}}>
+              <h4 style={{margin:"0 0 12px",fontSize:14}}>📈 Statistical Drift by Column</h4>
+              <div style={{overflowX:"auto"}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th><th>Drift Level</th><th>KS Stat</th>
+                      <th>PSI</th><th>Mean A → B</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(result.result.drift).map(([col,d])=>(
+                      <tr key={col}>
+                        <td style={{fontWeight:600}}>{col}</td>
+                        <td><span className={`severity-${d.drift_level||"NONE"}`} style={{fontWeight:700}}>
+                          ● {d.drift_level||"NONE"}
+                        </span></td>
+                        <td>{d.ks_statistic??d.chi2_stat??"-"}</td>
+                        <td>{d.psi??"-"}</td>
+                        <td style={{fontSize:12,color:"#9ca3af"}}>
+                          {d.mean_a!=null?`${d.mean_a} → ${d.mean_b}`:"-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Evaluate Tab ─────────────────────────────────────────────────────────────
+function EvaluateTab({project,user,notify}){
+  const [versions,setVersions]=useState([]);
+  const [evals,setEvals]=useState([]);
+  const [selVer,setSelVer]=useState("");
+  const [target,setTarget]=useState(project.default_target_column||"");
+  const [running,setRunning]=useState(false);
+  const [activeEval,setActiveEval]=useState(null);
+  const [evalDetail,setEvalDetail]=useState(null);
+  const pollRef=useRef(null);
+
+  useEffect(()=>{
+    loadData();
+    return ()=>{ if(pollRef.current) clearInterval(pollRef.current); };
+  },[]);
+
+  async function loadData(){
+    try{
+      const [v,e]=await Promise.all([
+        api("GET",`/projects/${project.id}/versions`),
+        api("GET",`/projects/${project.id}/evaluations`)
+      ]);
+      setVersions(v||[]);
+      setEvals(e||[]);
+      // resume polling if any pending/running
+      const active=(e||[]).find(ev=>ev.status==="running"||ev.status==="pending");
+      if(active) startPolling(active.id);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  function startPolling(evalId){
+    if(pollRef.current) clearInterval(pollRef.current);
+    setActiveEval(evalId);
+    pollRef.current=setInterval(async()=>{
+      try{
+        const s=await api("GET",`/evaluations/${evalId}/status`);
+        if(s.status==="completed"||s.status==="failed"){
+          clearInterval(pollRef.current);
+          setActiveEval(null);
+          setRunning(false);
+          loadData();
+          if(s.status==="completed") notify("✅ Evaluation complete!");
+          else notify("Evaluation failed: "+s.error_message,"error");
+        } else {
+          setEvals(prev=>prev.map(e=>e.id===evalId?{...e,...s}:e));
+        }
+      }catch{}
+    },2000);
+  }
+
+  async function startEval(){
+    if(!selVer||!target){notify("Select version and target column","warning");return;}
+    setRunning(true);
+    try{
+      const r=await api("POST","/evaluations",{
+        project_id:project.id,version_id:parseInt(selVer),target_column:target
+      });
+      notify(`🤖 Evaluation started (ID: ${r.eval_id})`);
+      setEvals(prev=>[{id:r.eval_id,status:"pending",progress:0,current_model:"Starting...",
+                        target_column:target,created_at:new Date().toISOString()},...prev]);
+      startPolling(r.eval_id);
+    }catch(e){notify(e.message,"error");setRunning(false);}
+  }
+
+  async function loadDetail(evalId){
+    if(evalDetail?.id===evalId){setEvalDetail(null);return;}
+    try{
+      const d=await api("GET",`/evaluations/${evalId}`);
+      setEvalDetail(d);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  const COLORS=["#E05C20","#2B7A4B","#3b82f6","#a855f7","#f59e0b","#06b6d4","#ec4899","#84cc16","#f97316","#6366f1"];
+
+  return (
+    <div style={{maxWidth:1000}}>
+      <div className="card" style={{padding:16,marginBottom:16}}>
+        <h3 style={{margin:"0 0 12px",fontSize:16}}>🤖 Start ML Evaluation</h3>
+        <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <label style={{fontSize:13,color:"#9ca3af",display:"block",marginBottom:4}}>Dataset Version</label>
+            <select className="input" value={selVer} onChange={e=>setSelVer(e.target.value)}>
+              <option value="">Select version</option>
+              {versions.map(v=><option key={v.id} value={v.id}>V{v.version_number} - {v.commit_message} ({v.row_count} rows)</option>)}
+            </select>
+          </div>
+          <div style={{flex:1,minWidth:160}}>
+            <label style={{fontSize:13,color:"#9ca3af",display:"block",marginBottom:4}}>Target Column</label>
+            <input className="input" placeholder="e.g. survived, churn" value={target}
+              onChange={e=>setTarget(e.target.value)}/>
+          </div>
+          <button className="btn-primary" onClick={startEval} disabled={running} style={{whiteSpace:"nowrap"}}>
+            {running?<span className="spinner"/>:"▶ Run 10 Models"}
+          </button>
+        </div>
+        <div style={{marginTop:8,fontSize:12,color:"#6b7280"}}>
+          Trains: Random Forest, Gradient Boosting, XGBoost, Logistic Regression, SVM, KNN, Naive Bayes, Decision Tree, Extra Trees, MLP Neural Net + Ensemble
+        </div>
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {evals.map(ev=>(
+          <div key={ev.id} className="card" style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                <span style={{fontWeight:700,fontSize:15}}>Eval #{ev.id}</span>
+                <span style={{background:"#111827",padding:"2px 8px",borderRadius:4,fontSize:12,color:"#9ca3af"}}>
+                  🎯 {ev.target_column}
+                </span>
+                {ev.task_type&&<span style={{background:"#1f2937",padding:"2px 8px",borderRadius:4,fontSize:12,color:"#9ca3af"}}>
+                  {ev.task_type}
+                </span>}
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{
+                  color:ev.status==="completed"?"#22c55e":ev.status==="failed"?"#ef4444":"#fbbf24",
+                  fontWeight:600,fontSize:13
+                }}>● {ev.status}</span>
+                {ev.status==="completed"&&(
+                  <button className="btn-secondary" style={{padding:"4px 10px",fontSize:12}}
+                    onClick={()=>loadDetail(ev.id)}>
+                    {evalDetail?.id===ev.id?"Hide":"Details"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {(ev.status==="running"||ev.status==="pending")&&(
+              <div style={{marginTop:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                  <span style={{color:"#9ca3af"}}>
+                    <span className="spinner" style={{width:14,height:14,marginRight:8}}/>
+                    {ev.current_model||"Initializing..."}
+                  </span>
+                  <span style={{color:"#E05C20",fontWeight:600}}>{ev.progress||0}%</span>
+                </div>
+                <div style={{background:"#111827",borderRadius:4,height:6,overflow:"hidden"}}>
+                  <div style={{background:"#E05C20",height:"100%",width:`${ev.progress||0}%`,
+                               transition:"width 0.3s ease",borderRadius:4}}/>
+                </div>
+              </div>
+            )}
+
+            {evalDetail&&evalDetail.id===ev.id&&(
+              <div className="fade-in" style={{marginTop:12}}>
+                {/* Model results table */}
+                {evalDetail.models?.length>0&&(
+                  <div style={{overflowX:"auto",marginBottom:12}}>
+                    <table>
+                      <thead><tr>
+                        <th>Model</th><th>Accuracy/R²</th><th>F1</th>
+                        <th>AUC-ROC</th><th>CV Score</th><th>Time</th><th>Status</th>
+                      </tr></thead>
+                      <tbody>
+                        {evalDetail.models.map((m,i)=>{
+                          const metrics=m.metrics||{};
+                          const isPrimary=metrics.cv_score===Math.max(...evalDetail.models.map(x=>x.metrics?.cv_score||0));
+                          return (
+                            <tr key={m.model_name} style={{background:isPrimary?"#1a2f1a":""}}>
+                              <td style={{fontWeight:600}}>
+                                {isPrimary&&<span style={{color:"#fbbf24",marginRight:4}}>🏆</span>}
+                                {m.model_name}
+                              </td>
+                              <td style={{color:"#E05C20",fontWeight:600}}>
+                                {(metrics.accuracy??metrics.r2)!=null?`${((metrics.accuracy??metrics.r2)*100).toFixed(1)}%`:"-"}
+                              </td>
+                              <td>{metrics.f1!=null?`${(metrics.f1*100).toFixed(1)}%`:"-"}</td>
+                              <td>{metrics.auc_roc!=null?`${(metrics.auc_roc*100).toFixed(1)}%`:"-"}</td>
+                              <td style={{fontWeight:600,color:"#2B7A4B"}}>
+                                {metrics.cv_score!=null?`${(metrics.cv_score*100).toFixed(1)}%`:"-"}
+                              </td>
+                              <td style={{color:"#6b7280"}}>{metrics.training_time!=null?`${metrics.training_time.toFixed(2)}s`:"-"}</td>
+                              <td><span style={{color:m.status==="completed"?"#22c55e":"#ef4444"}}>
+                                {m.status}
+                              </span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {evalDetail.ensemble&&(
+                  <div style={{background:"#0f1623",borderRadius:8,padding:12,marginBottom:12}}>
+                    <h4 style={{margin:"0 0 8px",fontSize:14,color:"#E05C20"}}>🎯 Ensemble Results</h4>
+                    <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                      <div>
+                        <div style={{fontSize:12,color:"#6b7280"}}>Simple Avg Accuracy</div>
+                        <div style={{fontWeight:700,color:"#E05C20"}}>
+                          {evalDetail.ensemble.combined_metrics?.simple_avg?.accuracy!=null?
+                            `${(evalDetail.ensemble.combined_metrics.simple_avg.accuracy*100).toFixed(1)}%`:"N/A"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:12,color:"#6b7280"}}>Weighted Avg Accuracy</div>
+                        <div style={{fontWeight:700,color:"#2B7A4B"}}>
+                          {evalDetail.ensemble.combined_metrics?.weighted_avg?.accuracy!=null?
+                            `${(evalDetail.ensemble.combined_metrics.weighted_avg.accuracy*100).toFixed(1)}%`:"N/A"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:12,color:"#6b7280"}}>Models in Ensemble</div>
+                        <div style={{fontWeight:700}}>{evalDetail.ensemble.combined_metrics?.model_count||0}</div>
+                      </div>
+                    </div>
+
+                    {evalDetail.ensemble.combined_feature_importances&&Object.keys(evalDetail.ensemble.combined_feature_importances).length>0&&(
+                      <div style={{marginTop:12}}>
+                        <div style={{fontSize:13,color:"#9ca3af",marginBottom:8}}>Feature Importances (Ensemble)</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                          {Object.entries(evalDetail.ensemble.combined_feature_importances)
+                            .sort(([,a],[,b])=>b-a).slice(0,10).map(([feat,imp])=>(
+                            <div key={feat} style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{width:120,fontSize:12,color:"#e2e8f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{feat}</div>
+                              <div style={{flex:1,background:"#1f2937",borderRadius:4,height:12,overflow:"hidden"}}>
+                                <div className="model-bar" style={{background:"#E05C20",height:"100%",
+                                                                    width:`${Math.min(imp*100*5,100)}%`}}/>
+                              </div>
+                              <div style={{width:50,fontSize:12,color:"#9ca3af",textAlign:"right"}}>{(imp*100).toFixed(1)}%</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Radar/Best Version Tab ───────────────────────────────────────────────────
+function RadarTab({project,user,notify}){
+  const [data,setData]=useState(null);
+  const [targetCol,setTargetCol]=useState(project.default_target_column||"");
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{ loadRadar(); },[]);
+
+  async function loadRadar(){
+    setLoading(true);
+    try{
+      const d=await api("GET",`/projects/${project.id}/radar-data?target_column=${encodeURIComponent(targetCol)}`);
+      setData(d);
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  function heatColor(val){
+    if(val>=85) return {bg:"#14532d",text:"#86efac"};
+    if(val>=70) return {bg:"#1e3a5f",text:"#93c5fd"};
+    if(val>=55) return {bg:"#713f12",text:"#fde68a"};
+    if(val>=40) return {bg:"#7c2d12",text:"#fca5a5"};
+    return {bg:"#450a0a",text:"#fca5a5"};
+  }
+
+  if(loading) return <div style={{textAlign:"center",padding:60}}><span className="spinner" style={{width:40,height:40}}/></div>;
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20}}>🎯 Best Version Radar</h2>
+        <input className="input" style={{width:200}} placeholder="Target column" value={targetCol}
+          onChange={e=>setTargetCol(e.target.value)}/>
+        <button className="btn-primary" onClick={loadRadar}>Refresh</button>
+      </div>
+
+      {!data?.has_evaluations&&(
+        <div style={{background:"#1a2332",border:"1px solid #374151",borderRadius:12,padding:32,
+                     textAlign:"center",color:"#6b7280",marginBottom:20}}>
+          <div style={{fontSize:48,marginBottom:12}}>🤖</div>
+          <h3 style={{margin:"0 0 8px",color:"#9ca3af"}}>No evaluations yet</h3>
+          <p style={{margin:0}}>Go to the Evaluate tab to run ML evaluations, then come back here!</p>
+        </div>
+      )}
+
+      {data?.champion&&(
+        <div className="champion-card card fade-in" style={{padding:24,marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+            <div style={{fontSize:48}}>🏆</div>
+            <div>
+              <div style={{fontSize:12,color:"#E05C20",fontWeight:700,textTransform:"uppercase",letterSpacing:2}}>Champion Version</div>
+              <div style={{fontSize:28,fontWeight:800,color:"#fff"}}>
+                {data.champion.label}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>Best Model</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#E05C20"}}>{data.champion.best_model}</div>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>Best Score</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#22c55e"}}>
+                  {(data.champion.best_score*100).toFixed(1)}%
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>Ensemble Score</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#3b82f6"}}>
+                  {(data.champion.ensemble_score*100).toFixed(1)}%
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>Data Quality</div>
+                <div style={{fontSize:18,fontWeight:700}}>
+                  <GradeBadge grade={data.champion.quality_grade} score={data.champion.quality_score}/>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>Task Type</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#a855f7"}}>{data.champion.task_type}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data?.performance_timeline?.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          {/* Performance Timeline */}
+          <div className="card" style={{padding:16}}>
+            <h3 style={{margin:"0 0 12px",fontSize:15}}>📈 Performance Timeline</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={data.performance_timeline}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937"/>
+                <XAxis dataKey="version" label={{value:"Version",position:"insideBottom",fill:"#6b7280"}} stroke="#374151"/>
+                <YAxis domain={[0,1]} tickFormatter={v=>`${(v*100).toFixed(0)}%`} stroke="#374151"/>
+                <Tooltip formatter={(v,n)=>[`${(v*100).toFixed(1)}%`,n]} contentStyle={{background:"#111827",border:"1px solid #374151"}}/>
+                <Legend/>
+                {["random_forest","gradient_boosting","xgboost","logistic_regression","svm","knn","extra_trees","mlp"].map((m,i)=>(
+                  <Line key={m} type="monotone" dataKey={m} stroke={["#E05C20","#2B7A4B","#3b82f6","#a855f7","#f59e0b","#06b6d4","#ec4899","#84cc16"][i]}
+                    dot={false} strokeWidth={1.5}/>
+                ))}
+                <Line type="monotone" dataKey="ensemble_score" stroke="#ffffff" strokeWidth={3}
+                  strokeDasharray="8 4" dot={{fill:"#fff",r:4}} name="Ensemble"/>
+                <Line type="monotone" dataKey="quality" stroke="#fbbf24" strokeWidth={1.5}
+                  strokeDasharray="4 4" dot={false} name="Quality"/>
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Model Win Counter */}
+          {data.model_wins?.length>0&&(
+            <div className="card" style={{padding:16}}>
+              <h3 style={{margin:"0 0 12px",fontSize:15}}>🏅 Model Win Counter</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={data.model_wins} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937"/>
+                  <XAxis type="number" stroke="#374151"/>
+                  <YAxis type="category" dataKey="model" width={110} stroke="#374151" tick={{fontSize:11}}/>
+                  <Tooltip contentStyle={{background:"#111827",border:"1px solid #374151"}}/>
+                  <Bar dataKey="wins" fill="#E05C20" radius={[0,4,4,0]}>
+                    {data.model_wins.map((entry,i)=>(
+                      <Cell key={i} fill={["#E05C20","#2B7A4B","#3b82f6","#a855f7","#f59e0b","#06b6d4"][i%6]}/>
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {data?.performance_timeline?.filter(v=>v.best_score!=null).length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          {/* Ensemble vs Best Single */}
+          <div className="card" style={{padding:16}}>
+            <h3 style={{margin:"0 0 12px",fontSize:15}}>⚔️ Ensemble vs Best Single</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={data.performance_timeline.filter(v=>v.best_score!=null)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937"/>
+                <XAxis dataKey="label" stroke="#374151" tick={{fontSize:11}}/>
+                <YAxis domain={[0,1]} tickFormatter={v=>`${(v*100).toFixed(0)}%`} stroke="#374151"/>
+                <Tooltip formatter={(v,n)=>[`${(v*100).toFixed(1)}%`,n]}
+                         contentStyle={{background:"#111827",border:"1px solid #374151"}}/>
+                <Legend/>
+                <Bar dataKey="best_score" fill="#3b82f6" name="Best Single" radius={[4,4,0,0]}/>
+                <Bar dataKey="ensemble_score" fill="#E05C20" name="Ensemble" radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Radar Chart */}
+          {data.radar_versions?.length>0&&(
+            <div className="card" style={{padding:16}}>
+              <h3 style={{margin:"0 0 12px",fontSize:15}}>🕸️ Top Versions Radar</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <RadarChart data={[
+                  {subject:"Accuracy",fullMark:1,...Object.fromEntries(data.radar_versions.map(v=>[v.label||`V${v.version}`,v.best_score||0]))},
+                  {subject:"Ensemble",fullMark:1,...Object.fromEntries(data.radar_versions.map(v=>[v.label||`V${v.version}`,v.ensemble_score||0]))},
+                  {subject:"Quality",fullMark:100,...Object.fromEntries(data.radar_versions.map(v=>[v.label||`V${v.version}`,(v.quality||0)/100]))},
+                ]}>
+                  <PolarGrid stroke="#1f2937"/>
+                  <PolarAngleAxis dataKey="subject" tick={{fill:"#9ca3af",fontSize:12}}/>
+                  <PolarRadiusAxis angle={90} domain={[0,1]} tick={{fill:"#6b7280",fontSize:10}}/>
+                  {data.radar_versions.map((v,i)=>(
+                    <Radar key={i} name={v.label||`V${v.version}`}
+                      dataKey={v.label||`V${v.version}`}
+                      stroke={["#E05C20","#2B7A4B","#3b82f6","#a855f7","#fbbf24"][i]}
+                      fill={["#E05C20","#2B7A4B","#3b82f6","#a855f7","#fbbf24"][i]}
+                      fillOpacity={0.15}/>
+                  ))}
+                  <Legend/>
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quality Heatmap */}
+      {data?.quality_heatmap?.length>0&&(
+        <div className="card" style={{padding:16}}>
+          <h3 style={{margin:"0 0 12px",fontSize:15}}>🌡️ Quality Heatmap</h3>
+          <div style={{overflowX:"auto"}}>
+            <table style={{borderCollapse:"separate",borderSpacing:4}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",padding:"4px 12px",background:"transparent"}}>Version</th>
+                  {["Completeness","Consistency","Uniqueness","Validity","Overall"].map(h=>(
+                    <th key={h} style={{padding:"4px 12px",background:"transparent",fontSize:12}}>{h}</th>
+                  ))}
+                  <th style={{padding:"4px 12px",background:"transparent",fontSize:12}}>Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.quality_heatmap.map(v=>(
+                  <tr key={v.version}>
+                    <td style={{padding:"4px 12px",fontWeight:600}}>V{v.version}</td>
+                    {[v.completeness,v.consistency,v.uniqueness,v.validity,v.overall].map((val,i)=>{
+                      const c=heatColor(val);
+                      return (
+                        <td key={i} style={{padding:"4px 8px"}}>
+                          <div className="heatmap-cell" style={{background:c.bg,color:c.text}}>
+                            {val?.toFixed(1)}%
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td style={{padding:"4px 8px"}}><GradeBadge grade={v.grade}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Predict Tab ─────────────────────────────────────────────────────────────
+function PredictTab({project,user,notify}){
+  const [versions,setVersions]=useState([]);
+  const [selVer,setSelVer]=useState("");
+  const [target,setTarget]=useState(project.default_target_column||"");
+  const [trained,setTrained]=useState(null);
+  const [inputVals,setInputVals]=useState({});
+  const [result,setResult]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [batchFile,setBatchFile]=useState(null);
+  const [mode,setMode]=useState("single");
+  const fileRef=useRef();
+
+  useEffect(()=>{
+    api("GET",`/projects/${project.id}/versions`).then(v=>setVersions(v||[]));
+  },[]);
+
+  async function trainModel(){
+    if(!selVer||!target){notify("Select version and target","warning");return;}
+    setLoading(true);
+    try{
+      const r=await api("POST","/predict/train",{
+        project_id:project.id,version_id:parseInt(selVer),target_column:target
+      });
+      setTrained(r);
+      const defaults={};
+      Object.entries(r.col_meta||{}).forEach(([k,v])=>{
+        defaults[k]=v.type==="numeric"?(v.mean||0).toFixed(2):v.categories?.[0]||"";
+      });
+      setInputVals(defaults);
+      notify("✅ Model trained!");
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  async function predict(){
+    setLoading(true);
+    try{
+      const r=await api("POST","/predict/run",{
+        project_id:project.id,version_id:parseInt(selVer),
+        target_column:target,input_data:inputVals
+      });
+      setResult(r);
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  async function batchPredict(){
+    if(!batchFile){notify("Select a CSV file","warning");return;}
+    setLoading(true);
+    try{
+      const fd=new FormData();
+      fd.append("project_id",project.id);
+      fd.append("version_id",selVer);
+      fd.append("target_column",target);
+      fd.append("file",batchFile);
+      const blob=await api("POST","/predict/batch",fd,true);
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download="predictions.csv"; a.click();
+      notify("✅ Batch predictions downloaded!");
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  return (
+    <div style={{maxWidth:800}}>
+      <div className="card" style={{padding:16,marginBottom:16}}>
+        <h3 style={{margin:"0 0 12px",fontSize:16}}>⚡ Live Prediction</h3>
+        <div style={{display:"flex",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:160}}>
+            <label style={{fontSize:13,color:"#9ca3af",display:"block",marginBottom:4}}>Dataset Version</label>
+            <select className="input" value={selVer} onChange={e=>setSelVer(e.target.value)}>
+              <option value="">Select version</option>
+              {versions.map(v=><option key={v.id} value={v.id}>V{v.version_number}</option>)}
+            </select>
+          </div>
+          <div style={{flex:1,minWidth:140}}>
+            <label style={{fontSize:13,color:"#9ca3af",display:"block",marginBottom:4}}>Target Column</label>
+            <input className="input" value={target} onChange={e=>setTarget(e.target.value)} placeholder="target"/>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end"}}>
+            <button className="btn-primary" onClick={trainModel} disabled={loading}>
+              {loading?<span className="spinner"/>:"🎓 Train Model"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {trained&&(
+        <div className="card fade-in" style={{padding:16,marginBottom:16}}>
+          <div style={{display:"flex",gap:12,marginBottom:12}}>
+            {["single","batch"].map(m=>(
+              <button key={m} onClick={()=>setMode(m)}
+                style={{padding:"6px 16px",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600,
+                        background:mode===m?"#E05C20":"#1f2937",color:mode===m?"#fff":"#9ca3af"}}>
+                {m==="single"?"Single Prediction":"Batch CSV"}
+              </button>
+            ))}
+          </div>
+
+          {mode==="single"&&(
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginBottom:12}}>
+                {Object.entries(trained.col_meta||{}).map(([feat,meta])=>(
+                  <div key={feat}>
+                    <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:3}}>{feat}</label>
+                    {meta.type==="categorical"&&meta.categories?.length>0?(
+                      <select className="input" value={inputVals[feat]||""}
+                        onChange={e=>setInputVals({...inputVals,[feat]:e.target.value})}>
+                        {meta.categories.map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ):(
+                      <input className="input" type="number" step="any"
+                        value={inputVals[feat]||""}
+                        placeholder={meta.mean!=null?`avg: ${parseFloat(meta.mean).toFixed(2)}`:""}
+                        onChange={e=>setInputVals({...inputVals,[feat]:e.target.value})}/>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button className="btn-primary" onClick={predict} disabled={loading}>
+                {loading?<span className="spinner"/>:"⚡ Predict"}
+              </button>
+
+              {result&&(
+                <div className="fade-in" style={{marginTop:16,background:"#0f1623",borderRadius:10,padding:16}}>
+                  <div style={{fontSize:20,fontWeight:800,marginBottom:8,color:"#E05C20"}}>
+                    {result.verdict||result.prediction}
+                  </div>
+                  {result.confidence!=null&&(
+                    <div style={{marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:14}}>
+                        <span style={{color:"#9ca3af"}}>Confidence</span>
+                        <span style={{fontWeight:700,color:"#22c55e"}}>{result.confidence}%</span>
+                      </div>
+                      <div style={{background:"#1f2937",borderRadius:4,height:8}}>
+                        <div style={{background:"#22c55e",height:"100%",
+                                     width:`${result.confidence}%`,borderRadius:4,transition:"width 0.5s"}}/>
+                      </div>
+                    </div>
+                  )}
+                  {result.probabilities&&(
+                    <div>
+                      <div style={{fontSize:13,color:"#9ca3af",marginBottom:6}}>Class Probabilities</div>
+                      {Object.entries(result.probabilities).map(([cls,pct])=>(
+                        <div key={cls} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                          <div style={{width:80,fontSize:12,color:"#e2e8f0"}}>{cls}</div>
+                          <div style={{flex:1,background:"#1f2937",borderRadius:3,height:10}}>
+                            <div style={{background:"#3b82f6",height:"100%",width:`${pct}%`,borderRadius:3}}/>
+                          </div>
+                          <div style={{width:45,fontSize:12,color:"#9ca3af",textAlign:"right"}}>{pct}%</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {mode==="batch"&&(
+            <div>
+              <p style={{color:"#6b7280",fontSize:14,marginBottom:12}}>
+                Upload a CSV with the same columns as your training data. Target column can be omitted.
+              </p>
+              <input ref={fileRef} type="file" accept=".csv" className="input" style={{marginBottom:12}}
+                onChange={e=>setBatchFile(e.target.files[0])}/>
+              <button className="btn-primary" onClick={batchPredict} disabled={loading}>
+                {loading?<span className="spinner"/>:"📥 Download Predictions"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Copilot Tab (Smart AI Agent — no raw data sent) ────────────────────────
+function CopilotTab({project,user,notify}){
+  const [messages,setMessages]=useState([]);
+  const [input,setInput]=useState("");
+  const [provider,setProvider]=useState(()=>localStorage.getItem("dv_provider")||"grok");
+  const [apiKey,setApiKey]=useState(()=>localStorage.getItem("dv_apikey_"+localStorage.getItem("dv_provider")||"")||"");
+  const [loading,setLoading]=useState(false);
+  const [showContext,setShowContext]=useState(false);
+  const [contextData,setContextData]=useState(null);
+  const [suggestions,setSuggestions]=useState([]);
+  const [showSuggestions,setShowSuggestions]=useState(true);
+  const [clearing,setClearing]=useState(false);
+  const bottomRef=useRef();
+  const inputRef=useRef();
+
+  useEffect(()=>{
+    api("GET",`/copilot/history/${project.id}`).then(h=>{
+      if(h&&h.length>0){setMessages(h);setShowSuggestions(false);}
+    });
+    api("GET",`/copilot/suggested-questions/${project.id}`).then(d=>{
+      if(d&&d.questions) setSuggestions(d.questions);
+    }).catch(()=>{});
+  },[]);
+
+  useEffect(()=>{
+    bottomRef.current?.scrollIntoView({behavior:"smooth"});
+  },[messages]);
+
+  function onProviderChange(p){
+    setProvider(p);
+    localStorage.setItem("dv_provider",p);
+    const saved=localStorage.getItem("dv_apikey_"+p)||"";
+    setApiKey(saved);
+  }
+
+  function onApiKeyChange(k){
+    setApiKey(k);
+    localStorage.setItem("dv_apikey_"+provider,k);
+  }
+
+  async function loadContext(){
+    try{
+      const d=await api("GET",`/copilot/context/${project.id}`);
+      setContextData(d);setShowContext(true);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function clearHistory(){
+    if(!confirm("Clear all chat history for this project?"))return;
+    setClearing(true);
+    try{
+      await api("DELETE",`/copilot/history/${project.id}`);
+      setMessages([]);setShowSuggestions(true);
+      notify("Chat history cleared");
+    }catch(e){notify(e.message,"error");}
+    finally{setClearing(false);}
+  }
+
+  async function sendMessage(text){
+    const msg=(text||input).trim();
+    if(!msg)return;
+    if(!apiKey.trim()){notify("Enter your API key for "+provider,"warning");return;}
+    const userMsg={role:"user",content:msg,created_at:new Date().toISOString()};
+    setMessages(m=>[...m,userMsg]);
+    setInput("");setLoading(true);setShowSuggestions(false);
+    try{
+      const r=await api("POST","/copilot/chat",{
+        project_id:project.id,message:msg,provider,api_key:apiKey
+      });
+      setMessages(m=>[...m,{role:"assistant",content:r.response,provider,created_at:new Date().toISOString()}]);
+    }catch(e){
+      setMessages(m=>[...m,{role:"assistant",content:`❌ Error: ${e.message}`,provider,created_at:new Date().toISOString()}]);
+    }
+    finally{setLoading(false);inputRef.current?.focus();}
+  }
+
+  const PROVIDER_INFO={
+    grok:     {label:"xAI Grok",        color:"#00d4ff", icon:"⚡", placeholder:"xai-..."},
+    anthropic:{label:"Anthropic Claude", color:"#E05C20", icon:"🤖", placeholder:"sk-ant-..."},
+    openai:   {label:"OpenAI GPT",       color:"#22c55e", icon:"💚", placeholder:"sk-..."},
+    gemini:   {label:"Google Gemini",    color:"#fbbf24", icon:"✨", placeholder:"AIza..."},
+    deepseek: {label:"DeepSeek",         color:"#a855f7", icon:"🔮", placeholder:"sk-..."},
+  };
+  const pi=PROVIDER_INFO[provider]||{};
+
+  function renderContent(text){
+    // Simple markdown-ish renderer
+    const lines=text.split("\n");
+    return lines.map((line,i)=>{
+      if(line.startsWith("### ")) return <div key={i} style={{fontWeight:700,fontSize:14,color:"#E05C20",marginTop:8,marginBottom:2}}>{line.slice(4)}</div>;
+      if(line.startsWith("## "))  return <div key={i} style={{fontWeight:800,fontSize:15,color:"#fff",marginTop:10,marginBottom:4,borderBottom:"1px solid #374151",paddingBottom:4}}>{line.slice(3)}</div>;
+      if(line.startsWith("# "))   return <div key={i} style={{fontWeight:800,fontSize:16,color:"#E05C20",marginTop:12,marginBottom:6}}>{line.slice(2)}</div>;
+      if(line.startsWith("- ")||line.startsWith("* ")){
+        return <div key={i} style={{paddingLeft:16,marginBottom:2,color:"#e2e8f0"}}><span style={{color:"#E05C20",marginRight:6}}>•</span>{formatInline(line.slice(2))}</div>;
+      }
+      if(line.match(/^\d+\. /)){
+        const num=line.match(/^(\d+)\. /)[1];
+        return <div key={i} style={{paddingLeft:16,marginBottom:2,color:"#e2e8f0"}}><span style={{color:"#E05C20",marginRight:6,fontWeight:700}}>{num}.</span>{formatInline(line.replace(/^\d+\. /,""))}</div>;
+      }
+      if(line.trim()==="") return <div key={i} style={{height:6}}/>;
+      return <div key={i} style={{marginBottom:2,color:"#e2e8f0",lineHeight:1.6}}>{formatInline(line)}</div>;
+    });
+  }
+
+  function formatInline(text){
+    const parts=text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+    return parts.map((p,i)=>{
+      if(p.startsWith("**")&&p.endsWith("**")) return <strong key={i} style={{color:"#fff"}}>{p.slice(2,-2)}</strong>;
+      if(p.startsWith("`")&&p.endsWith("`")) return <code key={i} style={{background:"#0f1623",color:"#E05C20",padding:"1px 5px",borderRadius:3,fontSize:12,fontFamily:"monospace"}}>{p.slice(1,-1)}</code>;
+      return p;
+    });
+  }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 140px)",maxWidth:900}}>
+      {/* Provider bar */}
+      <div className="card" style={{padding:"12px 16px",marginBottom:12,flexShrink:0}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:4}}>
+            {Object.entries(PROVIDER_INFO).map(([key,info])=>(
+              <button key={key} onClick={()=>onProviderChange(key)}
+                style={{padding:"5px 12px",border:`1px solid ${provider===key?info.color:"#374151"}`,
+                        borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:600,
+                        background:provider===key?"#0f1623":"transparent",
+                        color:provider===key?info.color:"#6b7280",transition:"all 0.2s"}}>
+                {info.icon} {info.label}
+              </button>
+            ))}
+          </div>
+          <input style={{flex:1,minWidth:180,background:"#0f1623",border:`1px solid ${pi.color||"#374151"}`,
+                         color:"#e2e8f0",padding:"6px 12px",borderRadius:8,fontSize:13,outline:"none"}}
+            type="password" placeholder={`${pi.label||provider} API Key (${pi.placeholder||"..."})`}
+            value={apiKey} onChange={e=>onApiKeyChange(e.target.value)}/>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={loadContext} title="See what data AI uses"
+              style={{background:"#1f2937",border:"1px solid #374151",color:"#9ca3af",
+                      padding:"5px 10px",borderRadius:8,cursor:"pointer",fontSize:12}}>
+              🔍 AI Context
+            </button>
+            <button onClick={clearHistory} disabled={clearing}
+              style={{background:"#1f2937",border:"1px solid #374151",color:"#9ca3af",
+                      padding:"5px 10px",borderRadius:8,cursor:"pointer",fontSize:12}}>
+              🗑️ Clear
+            </button>
+          </div>
+        </div>
+        <div style={{marginTop:8,fontSize:11,color:"#6b7280",display:"flex",alignItems:"center",gap:6}}>
+          <span style={{background:"#052e16",color:"#22c55e",padding:"2px 8px",borderRadius:10,fontWeight:600}}>
+            ✅ Privacy: Only computed stats sent to AI — never raw data rows
+          </span>
+          <span>· Powered by {pi.label}</span>
+        </div>
+      </div>
+
+      {/* Context viewer modal */}
+      {showContext&&contextData&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1000,
+                     display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+          onClick={()=>setShowContext(false)}>
+          <div style={{background:"#111827",border:"1px solid #374151",borderRadius:12,
+                       padding:24,maxWidth:700,width:"100%",maxHeight:"80vh",overflow:"auto"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{margin:0,color:"#E05C20"}}>🔍 What the AI Sees (No Raw Data)</h3>
+              <button onClick={()=>setShowContext(false)}
+                style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:20}}>✕</button>
+            </div>
+            <div style={{background:"#052e16",border:"1px solid #16a34a",borderRadius:8,padding:12,marginBottom:12}}>
+              <strong style={{color:"#22c55e"}}>✅ {contextData.data_source}</strong>
+              <div style={{color:"#86efac",fontSize:12,marginTop:4}}>
+                System prompt size: ~{contextData.system_prompt_chars} chars · Raw data sent: {String(contextData.raw_data_sent)}
+              </div>
+            </div>
+            <div style={{background:"#0f1623",borderRadius:8,padding:12,fontFamily:"monospace",
+                         fontSize:11,color:"#9ca3af",whiteSpace:"pre-wrap",overflow:"auto",maxHeight:"50vh"}}>
+              {contextData.system_prompt_preview}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="card" style={{flex:1,overflow:"auto",padding:16,marginBottom:12}}>
+        {messages.length===0&&(
+          <div style={{textAlign:"center",padding:"30px 20px",color:"#6b7280"}}>
+            <div style={{fontSize:48,marginBottom:12}}>🤖</div>
+            <h3 style={{margin:"0 0 6px",color:"#9ca3af"}}>DataVault AI Copilot</h3>
+            <p style={{margin:"0 0 4px",fontSize:13}}>Analyzes your dataset stats, quality scores & ML results</p>
+            <p style={{margin:0,fontSize:12,color:"#4b5563"}}>Select a provider → enter API key → ask a question</p>
+          </div>
+        )}
+
+        {messages.map((m,i)=>(
+          <div key={i} className="fade-in" style={{display:"flex",gap:10,marginBottom:16,
+                                                    flexDirection:m.role==="user"?"row-reverse":"row"}}>
+            <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,
+                         background:m.role==="user"?"#E05C20":"#1f2937",
+                         display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>
+              {m.role==="user"?"👤":PROVIDER_INFO[m.provider]?.icon||"🤖"}
+            </div>
+            <div style={{maxWidth:"82%",background:m.role==="user"?"#1B2A47":"#1a2332",
+                         borderRadius:12,padding:"10px 14px",
+                         border:`1px solid ${m.role==="user"?"#2d4a6e":"#1f2937"}`}}>
+              <div style={{fontSize:13,lineHeight:1.65}}>
+                {m.role==="assistant"?renderContent(m.content):<span style={{color:"#e2e8f0"}}>{m.content}</span>}
+              </div>
+              <div style={{fontSize:10,color:"#4b5563",marginTop:5,display:"flex",gap:8}}>
+                {m.provider&&m.role==="assistant"&&(
+                  <span style={{color:PROVIDER_INFO[m.provider]?.color||"#6b7280"}}>
+                    {PROVIDER_INFO[m.provider]?.icon} {PROVIDER_INFO[m.provider]?.label}
+                  </span>
+                )}
+                <span>{m.created_at?new Date(m.created_at).toLocaleTimeString():""}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {loading&&(
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:"#1f2937",
+                         display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>
+              {PROVIDER_INFO[provider]?.icon||"🤖"}
+            </div>
+            <div style={{background:"#1a2332",borderRadius:12,padding:"10px 14px",border:"1px solid #1f2937"}}>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span className="spinner" style={{width:14,height:14}}/>
+                <span style={{color:"#6b7280",fontSize:12}}>Analyzing your dataset metrics...</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Suggested questions */}
+      {showSuggestions&&suggestions.length>0&&(
+        <div style={{marginBottom:10,flexShrink:0}}>
+          <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2}}>
+            💡 Suggested questions:
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {suggestions.slice(0,6).map((q,i)=>(
+              <button key={i} onClick={()=>sendMessage(q)}
+                style={{background:"#1a2332",border:"1px solid #2d3748",color:"#9ca3af",
+                        padding:"5px 12px",borderRadius:20,cursor:"pointer",fontSize:12,
+                        transition:"all 0.2s",textAlign:"left"}}
+                onMouseEnter={e=>{e.target.style.borderColor="#E05C20";e.target.style.color="#e2e8f0";}}
+                onMouseLeave={e=>{e.target.style.borderColor="#2d3748";e.target.style.color="#9ca3af";}}>
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <textarea ref={inputRef}
+          style={{flex:1,background:"#0f1623",border:"1px solid #374151",color:"#e2e8f0",
+                  padding:"10px 14px",borderRadius:10,fontSize:14,resize:"none",
+                  outline:"none",fontFamily:"inherit",lineHeight:1.5,maxHeight:120}}
+          rows={2} placeholder="Ask about your dataset quality, model performance, feature importance, drift..."
+          value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+          onFocus={e=>e.target.style.borderColor="#E05C20"}
+          onBlur={e=>e.target.style.borderColor="#374151"}/>
+        <button className="btn-primary" onClick={()=>sendMessage()}
+          disabled={loading||!input.trim()}
+          style={{padding:"10px 20px",borderRadius:10,alignSelf:"flex-end",height:44}}>
+          {loading?<span className="spinner"/>:"Send ↑"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Team Tab ─────────────────────────────────────────────────────────────────
+function TeamTab({project,user,notify}){
+  const [collabs,setCollabs]=useState([]);
+  const [inviteUser,setInviteUser]=useState("");
+  const [inviteRole,setInviteRole]=useState("viewer");
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{ loadTeam(); },[]);
+
+  async function loadTeam(){
+    try{
+      const c=await api("GET",`/projects/${project.id}/collaborators`);
+      setCollabs(c||[]);
+    }catch(e){notify(e.message,"error");}
+    finally{setLoading(false);}
+  }
+
+  async function invite(){
+    if(!inviteUser.trim()){notify("Enter username","warning");return;}
+    try{
+      await api("POST","/collaborators/invite",{
+        project_id:project.id,username:inviteUser,role:inviteRole
+      });
+      notify(`✅ Invited ${inviteUser}!`);
+      setInviteUser(""); loadTeam();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function changeRole(userId,role){
+    try{
+      await api("PUT","/collaborators/role",{project_id:project.id,user_id:userId,role});
+      notify("Role updated"); loadTeam();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function removeCollab(userId){
+    if(!confirm("Remove this collaborator?")) return;
+    try{
+      await api("DELETE",`/collaborators/${project.id}/${userId}`);
+      notify("Removed"); loadTeam();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  const roleColors={"owner":"#E05C20","editor":"#2B7A4B","viewer":"#6b7280"};
+
+  return (
+    <div style={{maxWidth:700}}>
+      <div className="card" style={{padding:16,marginBottom:16}}>
+        <h3 style={{margin:"0 0 12px",fontSize:16}}>👥 Invite Team Member</h3>
+        <div style={{display:"flex",gap:12}}>
+          <input className="input" placeholder="Username" value={inviteUser}
+            onChange={e=>setInviteUser(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&invite()}/>
+          <select className="input" style={{width:130}} value={inviteRole} onChange={e=>setInviteRole(e.target.value)}>
+            <option value="viewer">Viewer</option>
+            <option value="editor">Editor</option>
+          </select>
+          <button className="btn-primary" onClick={invite}>Invite</button>
+        </div>
+        <div style={{marginTop:8,fontSize:12,color:"#6b7280"}}>
+          Viewer: read-only · Editor: upload + evaluate
+        </div>
+      </div>
+
+      <div className="card" style={{padding:16}}>
+        <h3 style={{margin:"0 0 12px",fontSize:16}}>Team Members</h3>
+        <div style={{marginBottom:12,padding:"10px 12px",background:"#111827",borderRadius:8,
+                     display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <span style={{fontWeight:600}}>{project.owner_name||user.username}</span>
+            <span style={{color:"#6b7280",fontSize:13,marginLeft:8}}>Project Owner</span>
+          </div>
+          <span style={{color:"#E05C20",fontWeight:600,fontSize:13}}>owner</span>
+        </div>
+        {loading?(
+          <div style={{textAlign:"center",padding:20}}><span className="spinner"/></div>
+        ) : collabs.length===0?(
+          <p style={{color:"#6b7280",textAlign:"center",padding:20}}>No collaborators yet</p>
+        ):(
+          collabs.map(c=>(
+            <div key={c.id} style={{marginBottom:8,padding:"10px 12px",background:"#111827",borderRadius:8,
+                                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span style={{fontWeight:600}}>{c.username}</span>
+                <span style={{color:"#6b7280",fontSize:13,marginLeft:8}}>{c.email}</span>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <select className="input" style={{width:110,padding:"4px 8px",fontSize:13}}
+                  value={c.role} onChange={e=>changeRole(c.user_id,e.target.value)}>
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                </select>
+                <button className="btn-danger" style={{padding:"4px 8px"}} onClick={()=>removeCollab(c.user_id)}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Panel ─────────────────────────────────────────────────────────────
+function AdminPanel({user,onBack}){
+  const [tab,setTab]=useState("stats");
+  const [stats,setStats]=useState(null);
+  const [users,setUsers]=useState([]);
+  const [projects,setProjects]=useState([]);
+  const [activity,setActivity]=useState([]);
+  const {notify,Notifs}=useNotify();
+
+  useEffect(()=>{ loadAll(); },[]);
+
+  async function loadAll(){
+    try{
+      const [s,u,p,a]=await Promise.all([
+        api("GET","/admin/stats"),api("GET","/admin/users"),
+        api("GET","/admin/projects"),api("GET","/admin/activity")
+      ]);
+      setStats(s); setUsers(u||[]); setProjects(p||[]); setActivity(a||[]);
+    }catch(e){notify(e.message,"error");}
+  }
+
+  async function updateRole(uid,role){
+    try{
+      await api("PATCH",`/admin/users/${uid}`,{role});
+      notify("Role updated"); loadAll();
+    }catch(e){notify(e.message,"error");}
+  }
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0f1623"}}>
+      <Notifs/>
+      <div style={{background:"#111827",borderBottom:"1px solid #1f2937",padding:"10px 20px",
+                   display:"flex",alignItems:"center",gap:16}}>
+        <button className="btn-secondary" onClick={onBack} style={{padding:"6px 12px"}}>← Back</button>
+        <span style={{fontSize:16}}>🛡️</span>
+        <span style={{fontWeight:700,fontSize:16}}>Admin Panel</span>
+      </div>
+
+      <div style={{padding:20,maxWidth:1100}}>
+        <div style={{display:"flex",gap:8,marginBottom:20,borderBottom:"1px solid #1f2937",paddingBottom:8}}>
+          {[["stats","📊 Stats"],["users","👥 Users"],["projects","📂 Projects"],["activity","📋 Activity"]].map(([id,label])=>(
+            <button key={id} className={`tab-btn ${tab===id?"active":""}`} onClick={()=>setTab(id)}>{label}</button>
+          ))}
+        </div>
+
+        {tab==="stats"&&stats&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16}}>
+              {[
+                {icon:"👤",label:"Users",value:stats.users,color:"#E05C20"},
+                {icon:"📂",label:"Projects",value:stats.projects,color:"#2B7A4B"},
+                {icon:"📁",label:"Versions",value:stats.versions,color:"#3b82f6"},
+                {icon:"🤖",label:"Evaluations",value:stats.evaluations,color:"#a855f7"},
+                {icon:"💾",label:"Storage",value:`${stats.storage_mb} MB`,color:"#f59e0b"}
+              ].map(s=>(
+                <div key={s.label} className="card" style={{padding:16,textAlign:"center"}}>
+                  <div style={{fontSize:28,marginBottom:4}}>{s.icon}</div>
+                  <div style={{fontSize:24,fontWeight:800,color:s.color}}>{s.value}</div>
+                  <div style={{fontSize:13,color:"#6b7280"}}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==="users"&&(
+          <div className="card" style={{padding:16}}>
+            <table>
+              <thead><tr><th>Username</th><th>Email</th><th>Full Name</th><th>Role</th><th>Projects</th><th>Joined</th><th>Actions</th></tr></thead>
+              <tbody>
+                {users.map(u=>(
+                  <tr key={u.id}>
+                    <td style={{fontWeight:600}}>{u.username}</td>
+                    <td style={{color:"#6b7280",fontSize:13}}>{u.email}</td>
+                    <td>{u.full_name||"-"}</td>
+                    <td>
+                      <span style={{background:u.role==="admin"?"#7c3aed":"#1f2937",
+                                    color:u.role==="admin"?"#c4b5fd":"#e2e8f0",
+                                    padding:"2px 8px",borderRadius:4,fontSize:12,fontWeight:600}}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td>{u.project_count}</td>
+                    <td style={{fontSize:12,color:"#6b7280"}}>{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <select style={{background:"#111827",border:"1px solid #374151",color:"#e2e8f0",
+                                      padding:"4px 8px",borderRadius:6,fontSize:13,cursor:"pointer"}}
+                        value={u.role} onChange={e=>updateRole(u.id,e.target.value)}>
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab==="projects"&&(
+          <div className="card" style={{padding:16}}>
+            <table>
+              <thead><tr><th>Name</th><th>Owner</th><th>Versions</th><th>Created</th></tr></thead>
+              <tbody>
+                {projects.map(p=>(
+                  <tr key={p.id}>
+                    <td style={{fontWeight:600}}>{p.name}</td>
+                    <td style={{color:"#9ca3af"}}>{p.owner_name}</td>
+                    <td>{p.version_count}</td>
+                    <td style={{fontSize:12,color:"#6b7280"}}>{new Date(p.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab==="activity"&&(
+          <div className="card" style={{padding:16}}>
+            <table>
+              <thead><tr><th>Time</th><th>User</th><th>Project</th><th>Action</th><th>Details</th></tr></thead>
+              <tbody>
+                {activity.map((a,i)=>(
+                  <tr key={i}>
+                    <td style={{fontSize:12,color:"#6b7280",whiteSpace:"nowrap"}}>{new Date(a.created_at).toLocaleString()}</td>
+                    <td style={{fontWeight:600}}>{a.username||"System"}</td>
+                    <td style={{color:"#9ca3af"}}>{a.project_name||"-"}</td>
+                    <td><span style={{background:"#111827",padding:"2px 8px",borderRadius:4,fontSize:12}}>{a.action}</span></td>
+                    <td style={{color:"#6b7280",fontSize:13,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis"}}>{a.details||"-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── App Root ─────────────────────────────────────────────────────────────────
+function App(){
+  const [sessionState,setSessionState]=useState(()=>getSession());
+  const [view,setView]=useState("dashboard");
+  const [currentProject,setCurrentProject]=useState(null);
+  const [verifying,setVerifying]=useState(true);
+
+  useEffect(()=>{
+    async function verify(){
+      const s=getSession();
+      if(!s||!s.token||!s.username){clearSession();setSessionState(null);setVerifying(false);return;}
+      try{
+        const me=await api("GET","/auth/me");
+        if(me&&me.username){
+          const updated={...s,...me};
+          setSession(updated);
+          setSessionState(updated);
+        } else {
+          clearSession();setSessionState(null);
+        }
+      }catch{clearSession();setSessionState(null);}
+      finally{setVerifying(false);}
+    }
+    verify();
+  },[]);
+
+  function handleLogout(){
+    clearSession();
+    setSessionState(null);
+    setView("dashboard");
+    setCurrentProject(null);
+  }
+
+  function selectProject(p){
+    if(p.id==="admin"){setView("admin");return;}
+    setCurrentProject(p);setView("project");
+  }
+
+  if(verifying){
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#0f1623"}}>
+        <div style={{textAlign:"center"}}>
+          <span className="spinner" style={{width:48,height:48}}/>
+          <p style={{color:"#6b7280",marginTop:16}}>Verifying session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if(!sessionState||!sessionState.token){
+    return <AuthPage onLogin={d=>{setSession(d);setSessionState(d);setView("dashboard");}}/>;
+  }
+
+  if(view==="admin") return <AdminPanel user={sessionState} onBack={()=>setView("dashboard")}/>;
+  if(view==="project"&&currentProject) return <ProjectView project={currentProject} user={sessionState} onBack={()=>setView("dashboard")}/>;
+  return <Dashboard user={sessionState} onSelectProject={selectProject} onLogout={handleLogout}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+const loader = document.getElementById('init-loader');
+if(loader) loader.style.display='none';
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Python/venv
+venv/
+backend/venv/
+
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.* 
+
+# Temporary uploads
+tmp_uploads/
+*.sqlite3
+*.db
+
+# Feedback/history
+feedback.jsonl
+
+# OS files
+.DS_Store
+Thumbs.db
