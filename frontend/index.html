@@ -1533,8 +1533,8 @@ function PredictTab({project,user,notify}){
 function CopilotTab({project,user,notify}){
   const [messages,setMessages]=useState([]);
   const [input,setInput]=useState("");
-  const [provider,setProvider]=useState(()=>localStorage.getItem("dv_provider")||"grok");
-  const [apiKey,setApiKey]=useState(()=>localStorage.getItem("dv_apikey_"+localStorage.getItem("dv_provider")||"")||"");
+  const [provider,setProvider]=useState(()=>localStorage.getItem("dv_provider")||"groq");
+  const [apiKey,setApiKey]=useState(()=>localStorage.getItem("dv_apikey_"+(localStorage.getItem("dv_provider")||"groq"))||"");
   const [loading,setLoading]=useState(false);
   const [showContext,setShowContext]=useState(false);
   const [contextData,setContextData]=useState(null);
@@ -1606,11 +1606,9 @@ function CopilotTab({project,user,notify}){
   }
 
   const PROVIDER_INFO={
-    grok:     {label:"xAI Grok",        color:"#00d4ff", icon:"⚡", placeholder:"xai-..."},
-    anthropic:{label:"Anthropic Claude", color:"#E05C20", icon:"🤖", placeholder:"sk-ant-..."},
-    openai:   {label:"OpenAI GPT",       color:"#22c55e", icon:"💚", placeholder:"sk-..."},
-    gemini:   {label:"Google Gemini",    color:"#fbbf24", icon:"✨", placeholder:"AIza..."},
-    deepseek: {label:"DeepSeek",         color:"#a855f7", icon:"🔮", placeholder:"sk-..."},
+    groq:   { label: "Groq (Free)",    color: "#00d4ff", icon: "⚡", placeholder: "gsk_..." },
+    gemini: { label: "Google Gemini",  color: "#fbbf24", icon: "✨", placeholder: "AIza..." },
+    claude: { label: "Claude",         color: "#E05C20", icon: "🤖", placeholder: "sk-ant-..." },
   };
   const pi=PROVIDER_INFO[provider]||{};
 
