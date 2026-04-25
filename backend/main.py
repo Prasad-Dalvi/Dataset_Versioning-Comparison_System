@@ -7,8 +7,9 @@ import math
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
+from fastapi.staticfiles import StaticFiles
 
 from core.database import init_db
 from api.routes import router
@@ -53,12 +54,23 @@ async def startup():
     init_db()
     print("✅ DataVault V2 started — DB initialized")
     print("🔑 Admin login: admin / Admin@123")
+    print("🌐 Frontend available at: http://localhost:5500")
 
+# Include API routes with /api prefix
 app.include_router(router, prefix="/api")
 
+# Serve the index.html file at root path
 @app.get("/")
-def root():
-    return {"message": "DataVault V2 API", "status": "running", "docs": "/docs"}
+def serve_frontend():
+    """Serve the main HTML file"""
+    html_path = os.path.join(os.path.dirname(__file__), "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return {"error": "index.html not found", "message": "Please ensure index.html is in the same directory as main.py"}
+
+# Optional: If you have other static files (CSS, JS, images), serve them
+# Uncomment and create a 'static' folder if needed
+# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Override default JSON encoder
 from fastapi.responses import JSONResponse as _JSONResponse
@@ -73,4 +85,5 @@ def _safe_jsonable(obj, **kwargs):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Changed port to 5500 (default) - you can change to 5500 if you prefer
+    uvicorn.run("main:app", host="127.0.0.1", port=5500, reload=True)
