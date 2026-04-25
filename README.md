@@ -7,7 +7,7 @@ See the full README below for setup, features, and API reference.
 
 ### Windows
 Double-click START.bat
-Open index.html in browser from file manager
+Open index.html in browser from file manager Note-Not Go live and localhost
 
 ### Mac/Linux
 ```bash
