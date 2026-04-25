@@ -10,7 +10,7 @@ Double-click START.bat
 
 ### Mac/Linux
 ```bash
-cd backend && pip install -r requirements.txt && python main.py
+cd backend && python -m venv venv && ./venv/Scripts/activate && pip install -r requirements.txt && python main.py
 ```
 Open frontend/index.html in your browser.
 Default admin: admin / Admin@123
