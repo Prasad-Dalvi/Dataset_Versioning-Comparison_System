@@ -654,7 +654,7 @@ async def predict_batch(
 class ChatBody(BaseModel):
     project_id: int
     message: str
-    provider: str = "anthropic"
+    provider: str = "groq"
     api_key: str = ""
 
 @router.post("/copilot/chat")
