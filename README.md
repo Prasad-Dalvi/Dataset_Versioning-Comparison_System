@@ -5,15 +5,11 @@ See the full README below for setup, features, and API reference.
 
 ## Quick Start
 
-### Windows
-Double-click START.bat
-Open index.html in browser from file manager Note-Not Go live and localhost
-
-### Mac/Linux
+### Windows/Mac/Linux
 ```bash
 cd backend && python -m venv venv && ./venv/Scripts/activate && pip install -r requirements.txt && python main.py
 ```
-Open frontend/index.html in your browser.
+Open (http://127.0.0.1:5500/)
 Default admin: admin / Admin@123
 
 ## What Changed in This Upgrade
