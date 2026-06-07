@@ -1,5 +1,5 @@
 demo link https://youtu.be/EGca3myYK7Q?si=9VlGZD0y8k4ul6o_ 
-# DataVault V2 — Dataset Versioning & ML Platform
+# DataVault — Dataset Versioning & ML Platform
 
 See the full README below for setup, features, and API reference.
 
